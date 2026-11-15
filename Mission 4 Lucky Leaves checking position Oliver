@@ -17,3 +17,4 @@ b move counter-clockwise 20 degrees
 set movement speed 50%
 move left -100 for 250 degrees
 move forward 12 in
+stop and exit program
