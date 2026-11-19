@@ -1,60 +1,42 @@
-# LEGO Education SPIKE Prime MyBlocks Documentation
+# LEGO Education SPIKE Prime — Calibrated MyBlocks Reference
 
-A collection of reusable **SPIKE Prime Word Blocks (MyBlocks)** designed for **FIRST LEGO League (FLL)** competition consistency, drive-base calibration, proportional gyro straight driving, and calibrated gyro turns.
-
----
-
-## Table of Contents
-
-- [Hardware & Configuration Overview](#hardware--configuration-overview)
-- [Core Mission MyBlocks](#core-mission-myblocks)
-  - [1. `Setup`](#1-setup)
-  - [2. `GyroStraight`](#2-gyrostraight)
-  - [3. `GyroTurn`](#3-gyroturn)
-- [Calibration & Testing MyBlocks](#calibration--testing-myblocks)
-  - [4. `VerifyDistance`](#4-verifydistance)
-  - [5. `FindCalibrationFactor`](#5-findcalibrationfactor)
-- [Step-by-Step Calibration Workflow](#step-by-step-calibration-workflow)
-- [Complete Mission Example](#complete-mission-example)
-- [Troubleshooting & Competition Tips](#troubleshooting--competition-tips)
+This repository documents the core Word Blocks **MyBlocks** used for **Robotina** in FIRST LEGO League (FLL) Challenge runs. Each custom block standardizes hardware initialization, proportional straight driving, calibrated gyro turns, and mat calibration routines.
 
 ---
 
-## Hardware & Configuration Overview
+## Hardware Configuration Summary
 
-| Parameter | Default / Configured Value | Notes |
-| :--- | :--- | :--- |
-| **Drive Motors** | `A+E` | Left and right drive wheels paired in `A+E` order |
-| **Wheel Size** | Large SPIKE Prime Wheel (`88 mm` diameter) | Theoretical circumference: `27.6 cm` |
-| **Stop Action** | `hold position` | Actively locks motors at the end of moves/turns to prevent coasting |
-| **Steering Gain (`Kp`)** | `1.5` | Proportional correction multiplier used in `GyroStraight` |
-| **Turn Calibration Factor** | `0.97` | Momentum compensation scale factor used in `GyroTurn` |
+| Component | Port(s) | Configuration / Calibrated Value | Notes |
+| :--- | :--- | :--- | :--- |
+| **Left Drive Motor** | `A` | Paired as `A+E` | Large SPIKE wheel (88 mm diameter) |
+| **Right Drive Motor** | `E` | Paired as `A+E` | Large SPIKE wheel (88 mm diameter) |
+| **Wheel Circumference** | `A+E` | `27.6 cm` | Stored in `wheel_circumference` variable |
+| **Attachment Motors** | `B`, `C` | Stop action: `hold position` | Prevents arms/claws from sagging |
+| **Default `Kp` Gain** | Hub Gyro | `1.5` (tunable via input) | Proportional steering gain for `GyroStraight` |
+| **Turn Calibration Factor** | Hub Gyro | `0.97` (`0.9694` measured) | Compensates for rotational momentum |
 
 ---
 
-## Core Mission MyBlocks
+## 1. `Setup`
 
-### 1. `Setup`
+Initializes the drive base, wheel circumference, stop behavior, gyro sensor, motor encoders, and attachment hold modes before a mission begins.
 
-Initializes the drive base, sets the calibrated wheel circumference, locks motor stop behavior, and zeroes out the hub's yaw sensor and motor relative encoders before a mission starts.
+### Inputs
+* *None*
 
-#### Parameters
-*None.*
+### Internal Block Logic
+1. `set [wheel_circumference v] to [27.6]` *(calibrated from `VerifyDistance`)*
+2. `set movement motors to [A+E v]`
+3. `set 1 motor rotation to [wheel_circumference] [cm v] moved`
+4. `set movement motors to [hold position v] at stop`
+5. `set yaw angle to [0]`
+6. `[A v] set relative position to [0]`
+7. `[E v] set relative position to [0]`
+8. `[B v] set motor to [hold position v] at stop`
+9. `[C v] set motor to [hold position v] at stop`
 
-#### Block Logic
-```text
-define Setup
-├── set [wheel_circumference] to (27.6)
-├── set movement motors to [A+E]
-├── set 1 motor rotation to (wheel_circumference) cm moved
-├── set movement motors to [hold position] at stop
-├── set yaw angle to (0)
-├── [A] set relative position to (0)
-└── [E] set relative position to (0)
-```
-
-#### How to Use
-Place `Setup` as the **very first block** directly beneath `when program starts` in every mission program.
+### Usage Example
+Place **`Setup`** directly under `when program starts` at the beginning of every mission stack.
 
 ```text
 when program starts
@@ -63,99 +45,87 @@ when program starts
 
 ---
 
-### 2. `GyroStraight`
+## 2. `GyroStraight (distance_cm) (speed) (Kp)`
 
-Drives the robot straight for an exact distance in centimeters while continuously correcting heading drift using proportional feedback from the hub's internal yaw sensor.
+Drives the robot straight for an exact distance in centimeters while continuously correcting heading drift using the hub's yaw angle sensor.
 
-#### Parameters
-| Parameter | Type | Description |
-| :--- | :--- | :--- |
-| `distance_cm` | Number | Target travel distance in centimeters (`cm`). |
-| `speed` | Number | Base motor power percentage (`0` to `100`). Recommended: `30`–`50` for high accuracy. |
+### Inputs
+* **`distance_cm`** *(Number)*: Target distance to drive in centimeters.
+* **`speed`** *(Number)*: Base motor speed percentage (`-100` to `100`; use `30–40%` for precision approaches, `50–60%` for long transits).
+* **`Kp`** *(Number)*: Proportional steering gain (default **`1.5`**). Controls how strongly the robot corrects off-course drift.
 
-#### Block Logic
-```text
-define GyroStraight (distance_cm) (speed)
-├── set yaw angle to (0)
-├── [A] set relative position to (0)
-├── set [target_rotations] to ((distance_cm) / (wheel_circumference))
-├── repeat until <(abs of ([A] relative position)) > ((target_rotations) * (360))>
-│   ├── set [correction] to (((0) - (yaw angle)) * (1.5))
-│   └── start moving at ((speed) + (correction)) ((speed) - (correction)) % speed
-└── stop moving
-```
+### Internal Block Logic
+1. `set yaw angle to [0]`
+2. `[A v] set relative position to [0]`
+3. `set [target_rotations v] to [(distance_cm) / (wheel_circumference)]`
+4. `repeat until <([abs v] of ([A v] relative position)) > ((target_rotations) * (360))>`
+   * `set [correction v] to (((0) - ([yaw angle])) * (Kp))`
+   * `start moving at ((speed) + (correction)) ((speed) - (correction)) % speed`
+5. `stop moving`
 
-#### How to Use
-Call `GyroStraight` whenever you need reliable, straight-line travel across the mat without veering off course.
-
-```text
-# Drive straight forward 45 cm at 40% speed
-GyroStraight (45) (40)
-```
+### Usage Examples
+* **Precision approach (`45 cm` at `35%` speed with `Kp = 1.5`):**
+  ```text
+  GyroStraight (45) (35) (1.5)
+  ```
+* **Fast transit across the mat (`110 cm` at `60%` speed with `Kp = 1.3`):**
+  ```text
+  GyroStraight (110) (60) (1.3)
+  ```
 
 ---
 
-### 3. `GyroTurn`
+## 3. `GyroTurn (degrees) (speed) (calibration_factor)`
 
-Executes an in-place pivot turn to a target angle (both clockwise and counter-clockwise) using the hub's yaw sensor and a momentum calibration factor so the robot stops squarely on target without overshooting.
+Executes an accurate point turn to the right (positive degrees) or left (negative degrees) using a calibration multiplier to stop cleanly without rotational overshoot.
 
-#### Parameters
-| Parameter | Type | Description |
-| :--- | :--- | :--- |
-| `degrees` | Number | Target turn angle in degrees. Use **positive** values (e.g., `90`) to turn right and **negative** values (e.g., `-90`) to turn left. Keep single turns under `180°`. |
-| `speed` | Number | Turn motor speed percentage (`0` to `100`). Recommended: `25`–`35` for crisp stops. |
+### Inputs
+* **`degrees`** *(Number)*: Target turn angle (`+` for right turns, `-` for left turns). Keep single turns `<= 180°` to avoid yaw wrap-around at `±179°`.
+* **`speed`** *(Number)*: Turn speed percentage (recommended **`25–35%`** for consistent braking).
+* **`calibration_factor`** *(Number)*: Scale factor determined by `FindCalibrationFactor` (default **`0.97`** for Robotina).
 
-#### Block Logic
-```text
-define GyroTurn (degrees) (speed)
-├── set yaw angle to (0)
-├── set movement speed to (speed) %
-├── set [target] to ((degrees) * (0.97))
-├── if <(target) > (0)> then
-│   ├── start moving [right: 100]
-│   └── wait until <(yaw angle) > (target)>
-├── else
-│   ├── start moving [left: -100]
-│   └── wait until <(yaw angle) < (target)>
-└── stop moving
-```
+### Internal Block Logic
+1. `set yaw angle to [0]`
+2. `set movement speed to [speed] %`
+3. `set [target v] to ((degrees) * (calibration_factor))`
+4. `if <(target) > [0]> then` *(Right Turn)*
+   * `start moving [right: 100]`
+   * `wait until <([yaw angle]) > (target)>`
+5. `else` *(Left Turn)*
+   * `start moving [left: -100]`
+   * `wait until <([yaw angle]) < (target)>`
+6. `stop moving`
 
-#### How to Use
-Pass positive angles for right turns and negative angles for left turns.
-
-```text
-# Turn 90 degrees right at 30% speed
-GyroTurn (90) (30)
-
-# Turn 45 degrees left at 30% speed
-GyroTurn (-45) (30)
-```
+### Usage Examples
+* **Turn 90° Right:**
+  ```text
+  GyroTurn (90) (30) (0.97)
+  ```
+* **Turn 90° Left:**
+  ```text
+  GyroTurn (-90) (30) (0.97)
+  ```
+* **Turn 45° Right:**
+  ```text
+  GyroTurn (45) (25) (0.97)
+  ```
 
 ---
 
-## Calibration & Testing MyBlocks
+## 4. `VerifyDistance (speed) (rotations)`
 
-Use these two utility MyBlocks on your competition mat whenever you change robot weight, swap wheels, or notice slight drift.
+Calibration helper block used to measure real-world wheel travel over a fixed number of motor rotations so you can calculate exact `wheel_circumference`.
 
-### 4. `VerifyDistance`
+### Inputs
+* **`speed`** *(Number)*: Test speed percentage (recommended **`30%`** to prevent wheel slip).
+* **`rotations`** *(Number)*: Number of wheel rotations to drive (recommended **`5`**).
 
-Drives the robot straight for an exact number of motor rotations so you can measure physical travel and calculate your robot's true `wheel_circumference`.
+### Internal Block Logic
+1. `set movement motors to [A+E v]`
+2. `set movement speed to [speed] %`
+3. `move [straight: 0] for (rotations) [rotations v]`
 
-#### Parameters
-| Parameter | Type | Description |
-| :--- | :--- | :--- |
-| `speed` | Number | Movement speed percentage (use `30` to prevent wheel slip). |
-| `rotations` | Number | Number of full wheel rotations to travel (e.g., `5`). |
-
-#### Block Logic
-```text
-define VerifyDistance (speed) (rotations)
-├── set movement motors to [A+E]
-├── set movement speed to (speed) %
-└── move [straight: 0] for (rotations) rotations
-```
-
-#### How to Use
+### Usage Example
 ```text
 when program starts
 └── VerifyDistance (30) (5)
@@ -163,85 +133,40 @@ when program starts
 
 ---
 
-### 5. `FindCalibrationFactor`
+## 5. `FindCalibrationFactor (speed) (yaw_threshold)`
 
-Performs a raw, unscaled right pivot turn up to `yaw_threshold` so you can measure momentum overshoot and compute the exact calibration multiplier for `GyroTurn`.
+Calibration helper block used to spin the robot until the hub reaches `yaw_threshold`, allowing you to tune out rotational momentum overshoot.
 
-#### Parameters
-| Parameter | Type | Description |
-| :--- | :--- | :--- |
-| `speed` | Number | Turn speed percentage (match the speed you plan to use in missions, e.g., `30`). |
-| `yaw_threshold` | Number | Raw yaw angle (`< 179`) at which the motors cut power. Start with `87` for a `90°` turn test. |
+### Inputs
+* **`speed`** *(Number)*: Turn speed percentage (recommended **`10–30%`**).
+* **`yaw_threshold`** *(Number)*: Raw gyro stop angle (`<= 178°` to stay inside the hub's `-179°` to `+179°` yaw range; e.g., `87` for a `90°` test or `175` for a `180°` test).
 
-#### Block Logic
-```text
-define FindCalibrationFactor (speed) (yaw_threshold)
-├── set movement motors to [A+E]
-├── set movement speed to (speed) %
-├── set yaw angle to (0)
-├── start moving [right: 100]
-├── wait until <(yaw angle) > (yaw_threshold)>
-└── stop moving
-```
+### Internal Block Logic
+1. `set movement motors to [A+E v]`
+2. `set movement speed to [speed] %`
+3. `set yaw angle to [0]`
+4. `start moving [right: 100]`
+5. `wait until <([yaw angle]) > (yaw_threshold)>`
+6. `stop moving`
 
-#### How to Use
+### Usage Example
 ```text
 when program starts
-└── FindCalibrationFactor (30) (87)
+└── FindCalibrationFactor (10) (175)
 ```
+*(Note: Keep `yaw_threshold` at `178` or lower—the SPIKE Prime yaw sensor wraps around from `+179°` to `-180°` and will never trigger a threshold above `179`.)*
 
 ---
 
-## Step-by-Step Calibration Workflow
-
-### Step 1: Calibrate `wheel_circumference`
-1. Place your robot on the FLL mat with a fixed reference point (such as the front axle or a LEGO pointer) aligned on a tape mark.
-2. Run `VerifyDistance (30) (5)`.
-3. Measure the exact distance traveled in centimeters (e.g., `137.5 cm`).
-4. Divide the measured distance by `5`:
-   ```text
-   wheel_circumference = Measured Distance (cm) / 5
-   # Example: 137.5 / 5 = 27.5 cm
-   ```
-5. Update `set [wheel_circumference] to (...)` inside your **`Setup`** MyBlock with this value.
-
-### Step 2: Calibrate Turn Multiplier (`GyroTurn`)
-1. Align a straight edge of your robot squarely against a line or border on the mat.
-2. Run `FindCalibrationFactor (30) (87)`.
-3. Observe where the robot comes to rest relative to a true `90°` perpendicular line:
-   - **Overshoots `90°`:** Lower `yaw_threshold` (e.g., try `85` or `86`).
-   - **Undershoots `90°`:** Raise `yaw_threshold` (e.g., try `88` or `89`).
-4. Once the robot lands squarely at `90°`, divide your winning `yaw_threshold` by `90`:
-   ```text
-   Calibration Factor = Winning yaw_threshold / 90
-   # Example: 87 / 90 = 0.967 (round to 0.97)
-   ```
-5. Update the multiplier (`0.97`) in `set [target] to ((degrees) * (0.97))` inside your **`GyroTurn`** MyBlock.
-
----
-
-## Complete Mission Example
-
-Below is an example of chaining `Setup`, `GyroStraight`, and `GyroTurn` together to drive out of base, turn toward a mission model, approach it, and return.
+## Complete Sample Mission Stack
 
 ```text
 when program starts
 ├── Setup
-├── GyroStraight (60) (45)     # Drive 60 cm straight out of base at 45% speed
-├── GyroTurn (90) (30)         # Turn 90 degrees right at 30% speed
-├── GyroStraight (25) (35)     # Approach mission model 25 cm at 35% speed
-├── GyroStraight (25) (-35)    # Back away 25 cm (or turn around)
-├── GyroTurn (-90) (30)        # Turn 90 degrees left to face home
-└── GyroStraight (60) (50)     # Return 60 cm to base
+├── GyroStraight (60) (45) (1.5)
+├── GyroTurn (90) (30) (0.97)
+├── GyroStraight (35) (35) (1.5)
+├── [B v] run [clockwise v] for (140) [degrees v]
+├── GyroTurn (-45) (30) (0.97)
+└── GyroStraight (-50) (50) (1.5)
 ```
-
----
-
-## Troubleshooting & Competition Tips
-
-- **Yaw Sensor `180°` Wrap-Around:** The SPIKE Prime `yaw angle` sensor reports values from `-179°` to `+179°`. Never pass a `degrees` value of `180` or higher into `GyroTurn` or `FindCalibrationFactor`—for a `180°` turn, chain two `GyroTurn (90) (30)` blocks instead.
-- **Steering Direction in `GyroStraight`:** If nudging the robot right causes it to curve *further* right instead of correcting back left, swap the `+` and `-` operators in `start moving at ((speed) + (correction)) ((speed) - (correction)) % speed`.
-- **Tuning `Kp` (`1.5`) in `GyroStraight`:**
-  - If the robot oscillates or wiggles side-to-side while driving straight, lower `1.5` to `1.0` or `1.2`.
-  - If the robot drifts off line and corrects too slowly, raise `1.5` to `1.8` or `2.0`.
-- **Consistent Motor Pairing:** Ensure every block uses `A+E` in the exact same order; reversing it to `E+A` inverts forward/backward and left/right directions.
